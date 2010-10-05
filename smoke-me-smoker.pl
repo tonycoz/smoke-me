@@ -5,7 +5,7 @@ use File::Find;
 use Config::JSON;
 use FindBin;
 use lib "$FindBin::Bin/lib";
-use PerlSmoker::Push qw(smoke_push);
+use PerlSmoker::Push qw(smoke_push status_push);
 
 my $cfg_file = shift || "smokeme.cfg";
 
@@ -22,6 +22,9 @@ my $seen_age = 86_400 * 30;
 my $post_key = $cfg->get("postkey") or die "No postkey";
 #'1ee4598c-bc0b-11df-ac9f-d7c92dc5c286';
 
+my $queue_dir = $cfg->get("queue") || "$base/queue";
+-d $queue_dir or die "$queue_dir isn't a directory";
+
 my $os = `uname -o`;
 chomp $os;
 my $arch = `uname -m`;
@@ -37,38 +40,29 @@ my %seen;
   %seen = map { split ' ' } @seen;
 };
 
-#my %cfgs =
-#  (
-#   default => "",
-#   icc => "-Dcc=icc",
-#   cpp => "-Dcc=g++",
-#  );
-
-
+my %cfgs = %{$cfg->get("configs")};
 
 my @cfg_names = keys %cfgs;
 
-my @other_branches = qw(origin/blead origin/maint-5.12);
+my @other_branches = @{$cfg->get("others")};
 my @others;
 for my $branch (@other_branches) {
   push @others, map [ $branch, $_ ], @cfg_names;
 }
 
-use Data::Dumper;
-$Data::Dumper::Terse = 1;
-print "others: ", Dumper \@others;
+# use Data::Dumper;
+# $Data::Dumper::Terse = 1;
+# print "others: ", Dumper \@others;
 
-print "base: $base\n";
-print "cfgs: ", Dumper(\%cfgs), "\n";
-print "gitbase: $gitbase\n";
-print "copy: $copy\n";
-print "smoke: $smoke\n";
-print "build: $build_dir\n";
-print "patch: $dot_patch\n";
-print "seen: $seen_file\n";
-print "post: $post_key\n";
-
-exit;
+# print "base: $base\n";
+# print "cfgs: ", Dumper(\%cfgs), "\n";
+# print "gitbase: $gitbase\n";
+# print "copy: $copy\n";
+# print "smoke: $smoke\n";
+# print "build: $build_dir\n";
+# print "patch: $dot_patch\n";
+# print "seen: $seen_file\n";
+# print "post: $post_key\n";
 
 while (1) {
   my $did_run = 0;
@@ -146,8 +140,15 @@ while (1) {
 	   $_ eq '.gitignore' and unlink;
 	 }, $copy);
 
+    status_push
+      (
+       host => $host,
+       status => "smoking",
+       smoke => "$which-$cfg/$patch",
+       key => $post_key,
+      );
     fake_patch($dot_patch, $which, $patch);
-    my $cfg_opts = $cfgs{$cfg};
+    my $cfg_opts = $cfgs{$cfg}{config};
     print "Smoking $which-$cfg/$patch...\n";
     system "cd $smoke && ./smokecurrent.sh -nosmartsmoke -nomail $cfg_opts";
     #or die "smoke error";
@@ -184,6 +185,7 @@ while (1) {
        host => $host,
        when => strftime("%Y-%m-%d %H:%M:%S", gmtime),
        key => $post_key,
+       _queue => $queue_dir,
       );
     smoke_push(%opts);
 
@@ -211,6 +213,12 @@ while (1) {
       print "Seen cleanup @del\n" if @del;
       delete @seen{@del};
     }
+    status_push
+      (
+       host => $host,
+       status => "idle",
+       key => $post_key,
+      );
     print "Nothing to do, waiting\n";
     sleep 600;
   }
