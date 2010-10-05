@@ -25,7 +25,7 @@ my $post_key = $cfg->get("postkey") or die "No postkey";
 my $queue_dir = $cfg->get("queue") || "$base/queue";
 -d $queue_dir or die "$queue_dir isn't a directory";
 
-my $os = `uname -o`;
+my $os = `uname -s`;
 chomp $os;
 my $arch = `uname -m`;
 chomp $arch;
