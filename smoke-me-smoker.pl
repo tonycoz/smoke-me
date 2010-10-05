@@ -239,7 +239,7 @@ sub branch_patch {
 sub fake_patch {
   my ($out, $branch, $patch) = @_;
 
-  (my $out_branch = $branch) =~ s(^origin/)();
+  (my $out_branch = $branch) =~ s(^(?:remotes/)?origin/)();
   my ($desc) = `git describe $branch`;
   chomp $desc;
 
