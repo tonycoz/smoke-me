@@ -69,7 +69,7 @@ while (1) {
   my $good = eval {
     chdir $gitbase or die "chdir $gitbase: $!\n";
     system "git clean -dxf";
-    system "git fetch"
+    system "git fetch -p"
       and die "TEMP: git fetch\n";
     system "git checkout blead"
       and die "git checkout blead";
