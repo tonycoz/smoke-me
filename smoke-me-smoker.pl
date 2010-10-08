@@ -18,7 +18,8 @@ my $smoke = $cfg->get("smoke") || "$base/smoke";
 my $build_dir = $cfg->get("build") || "$base/perl-current";
 my $dot_patch = "$copy/.patch";
 my $seen_file = "$base/seen.txt";
-my $seen_age = 86_400 * 30;
+my $seen_file_tmp = "$base/seen.txt.work";
+my $seen_age = 86_400 * 365;
 my $post_key = $cfg->get("postkey") or die "No postkey";
 #'1ee4598c-bc0b-11df-ac9f-d7c92dc5c286';
 
@@ -202,11 +203,13 @@ while (1) {
   }
 
   {
-    open my $seen_fh, ">", $seen_file or die "Create $seen_file: $!";
+    open my $seen_fh, ">", $seen_file_tmp or die "Create $seen_file_tmp: $!";
     for my $key (keys %seen) {
       print $seen_fh "$key $seen{$key}\n";
     }
     close $seen_fh;
+    rename $seen_file_tmp, $seen_file
+      or die "Cannot rename $seen_file_tmp to $seen_file: $!";
   }
 
   unless ($did_run) {
