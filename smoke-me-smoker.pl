@@ -22,6 +22,8 @@ my $seen_age = 86_400 * 30;
 my $post_key = $cfg->get("postkey") or die "No postkey";
 #'1ee4598c-bc0b-11df-ac9f-d7c92dc5c286';
 
+my $gitfetchopts = $cfg->get("gitfetchopts") // '';
+
 my $queue_dir = $cfg->get("queue") || "$base/queue";
 -d $queue_dir or die "$queue_dir isn't a directory";
 
@@ -69,7 +71,7 @@ while (1) {
   my $good = eval {
     chdir $gitbase or die "chdir $gitbase: $!\n";
     system "git clean -dxf";
-    system "git fetch -p"
+    system "git fetch $gitfetchopts"
       and die "TEMP: git fetch\n";
     system "git checkout blead"
       and die "git checkout blead";
