@@ -150,6 +150,8 @@ while (1) {
        key => $post_key,
       );
     fake_patch($dot_patch, $which, $patch);
+    -e "$smoke/smokecurrent.lck"
+      and die "Smoker locked, remove lock file";
     my $cfg_opts = $cfgs{$cfg}{config};
     print "Smoking $which-$cfg/$patch...\n";
     system "cd $smoke && ./smokecurrent.sh -nosmartsmoke -nomail $cfg_opts";
@@ -196,7 +198,7 @@ while (1) {
   unless ($good) {
     my $error = $@;
     unless ($error =~ s/^TEMP://) {
-      die;
+      die $error;
     }
     print "Temporary (?) error: $@  ";
   }
