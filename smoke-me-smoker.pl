@@ -154,7 +154,7 @@ while (1) {
       and die "Smoker locked, remove lock file";
     my $cfg_opts = $cfgs{$cfg}{config};
     print "Smoking $which-$cfg/$patch...\n";
-    system "cd $smoke && ./smokecurrent.sh -nosmartsmoke -nomail $cfg_opts";
+    system "cd $smoke && ./smokecurrent.sh -nosmartsmoke -nomail $cfg_opts </dev/null";
     #or die "smoke error";
     $did_run = 1;
 
