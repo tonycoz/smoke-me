@@ -82,7 +82,7 @@ while (1) {
 
     my $cfg;
     my $which;
-    my @smokeme = grep m(origin/smoke[-_]me/), @branches;
+    my @smokeme = grep m(^(remotes/)?origin/smoke[-_]me/[a-zA-Z0-9/_+.-]+\z), @branches;
 
     my @cand = grep !$seen{branch_patch($_). "-default"}, @smokeme;
     if (@cand) {
