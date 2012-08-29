@@ -5,14 +5,12 @@ use Exporter qw(import);
 use Digest::SHA qw(sha256_hex);
 use Storable;
 
-our @EXPORT_OK = qw(smoke_push smoke_push_queued status_push);
+our @EXPORT_OK = qw(smoke_queue smoke_push smoke_push_queued status_push);
 
-sub smoke_push {
-  my %opts = @_;
+sub smoke_queue {
+ my %opts = @_;
 
   my $queue_dir = delete $opts{_queue};
-
-  my $key = delete $opts{key};
 
   for my $f (qw/out rpt log/) {
     $opts{$f} = [ undef, $opts{$f}, Content => scalar(`cat $opts{$f}`) ];
@@ -23,6 +21,16 @@ sub smoke_push {
 
   store(\%opts, "$queue_dir/$fn")
     or die "Cannot save request to $queue_dir/$fn: $!";
+}
+
+sub smoke_push {
+  my %opts = @_;
+
+  my $key = delete $opts{key};
+
+  smoke_queue(%opts);
+
+  my $queue_dir = delete $opts{_queue};
 
   smoke_push_queued($queue_dir, $key);
 }
