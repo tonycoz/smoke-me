@@ -1,0 +1,142 @@
+package PerlSmokeMe::Cfg;
+use v5.36;
+use Config::JSON;
+use FindBin;
+use Scalar::Util qw(looks_like_number reftype);
+
+sub new ($class, $cfg_file) {
+    my $cfg = Config::JSON->new($cfg_file);
+
+    my $base = $cfg->get("base") // "$FindBin::Bin/..";
+    # git checkout to update and search for branches
+    my $gitbase = $cfg->get("gitbase") || "$base/perl-from-github";
+    -d $gitbase && -d "$gitbase/.git" && -f "$gitbase/perl.h"
+        or die "$cfg_file: gitbase '$gitbase' isn't a git clone of perl\n";
+    # where to find the Test-Smoke installation
+    my $smoke = $cfg->get("smoke") // "$base/smoke";
+    -d $smoke && -f "$smoke/tssmokeperl.pl"
+        or die "$cfg_file: smoke '$smoke' not a Test::Smoke install\n";
+    my $seen_file = $cfg->get("seen") // "$base/seen.txt";
+    -f $seen_file
+        or die "$cfg_file: seen '$seen_file' not a file\n";
+    my $seen_age = $cfg->get("seen_age") // 86_400 * 365;
+    looks_like_number($seen_age)
+        or die "$cfg_file: seen_age '$seen_age' must be a number\n";
+    my $branch_rules = $cfg->get("branches") // {};
+    ref $branch_rules && reftype($branch_rules) eq "HASH"
+        or die "$cfg_file: branches must be a hash\n";
+    my %branch_rules =
+        (
+         blead =>
+         {
+             name => "blead",
+             priority => 1
+         },
+         maint =>
+         {
+             name => qr(maint-\d\.\d\d),
+             priority => 2
+         },
+         "smoke-me" =>
+         {
+             name => qr(smoke-me/[a-zA-Z0-9/_+.-]+),
+             priority => 3,
+         },
+         %$branch_rules,
+        );
+    # allows config to delete default rules
+    # preserve the rule keys for reporting
+    for my $branch_key (keys %branch_rules) {
+        ref($branch_rules{$branch_key})
+            or die "$cfg_file: branch{$branch_key} must be a hash\n";
+        $branch_rules{$branch_key}{key} = $branch_key;
+    }
+    my @branch_rules = sort { $a->{key} cmp $b->{key} }
+        grep { $_->{name} } values %branch_rules;
+    for my $branch_rule (@branch_rules) {
+        # JSON doesn't do regexp objects, so treat "qr/.../" as a regexp
+        my $err_prefix = "$cfg_file: branches{$branch_rule->{key}}";
+        if ($branch_rule->{name} =~ m(^qr/(.*)/$)) {
+            my $qr = eval { qr/$1/; };
+            $qr or die "$err_prefix: Failed to compile regexp /$1/:\n$@\n";
+            $branch_rule->{name} = $qr;
+        }
+        looks_like_number($branch_rule->{priority})
+            or die "$err_prefix: priority must be numeric\n";
+    }
+
+    my $config_rules = $cfg->get("configs") // {};
+    ref $config_rules && reftype($config_rules) eq "HASH"
+        or die "$cfg_file: configs must be a hash\n";
+    my %config_rules =
+        (
+         default =>
+         {
+             name => "default",
+             priority => 0,
+             file => "smokecurrent.buildcfg",
+         },
+         %$config_rules,
+        );
+    for my $config_key (keys %config_rules) {
+        $config_rules{$config_key}{key} = $config_key;
+    }
+    my @config_rules = sort { $a->{name} cmp $b->{name} }
+        grep { $_->{name} } values %config_rules;
+    for my $config_rule (@config_rules) {
+        my $err_prefix = "$cfg_file: configs{$config_rule->{key}}";
+        ref($config_rule->{name})
+            and die "$err_prefix: name must be a string\n";
+        looks_like_number($config_rule->{priority})
+            or die "$err_prefix: priority must be numeric\n";
+        ref($config_rule->{file})
+            and die "$err_prefix: file must be a string\n";
+        my $full_cfg = "$smoke/$config_rule->{file}";
+        -f $full_cfg
+            or die "$err_prefix: file $full_cfg isn't a file\n";
+    }
+
+    my $gitfetchopts = $cfg->get("gitfetchopts") // '-p';
+
+    bless
+    {
+        base => $base,
+        gitbase => $gitbase,
+        smoke => $smoke,
+        seen => $seen_file,
+        seen_age => $seen_age,
+        branches => \@branch_rules,
+        configs => \@config_rules,
+        gitfetchopts => $gitfetchopts,
+    }, $class;
+}
+
+sub gitbase ($self) {
+    $self->{gitbase};
+}
+
+sub smoke ($self) {
+    $self->{smoke};
+}
+
+sub seen ($self) {
+    $self->{seen};
+}
+
+sub seen_age ($self) {
+    $self->{seen_age};
+}
+
+sub gitfetchopts ($self) {
+    $self->{gitfetchopts};
+}
+
+sub branches ($self) {
+    $self->{branches}->@*;
+}
+
+sub configs ($self) {
+    $self->{configs}->@*;
+}
+
+1;
