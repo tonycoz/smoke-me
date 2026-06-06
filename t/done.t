@@ -1,6 +1,6 @@
 #!perl
 use v5.36;
-use PerlSmoker::Done;
+use PerlSmokeMe::Done;
 use Test::More;
 use File::Temp qw(tempdir);
 use File::Spec;
@@ -15,7 +15,7 @@ my $seen_file = File::Spec->catfile($temp_dir, "seen.dat");
 
 {
     my $done;
-    ok(!eval { $done = PerlSmoker::Done->new($seen_file); 1 },
+    ok(!eval { $done = PerlSmokeMe::Done->new($seen_file); 1 },
        "fail to create file from scratch");
     like($@, qr/touch/, "error mentions 'touch'");
 }
@@ -32,15 +32,15 @@ $sha2-default $now
 EOS
     close $fh
         or die "Cannot close $seen_file: $!";
-    my $done = PerlSmoker::Done->new($seen_file);
+    my $done = PerlSmokeMe::Done->new($seen_file);
     ok(!$done->seen($sha1, "default"), "don't have aged out entry");
     ok(!$done->seen($sha1, "other"), "or the other old entry");
-    ok($done->seen($sha2, "default"), "do have the new entry");
+    ok($done->seen($sha2, "default"), "do have the newer entry");
     $done->saw($sha3, "default");
     ok($done->seen($sha3, "default"), "see the entry we just added");
     undef $done;
 
-    $done = PerlSmoker::Done->new($seen_file);
+    $done = PerlSmokeMe::Done->new($seen_file);
     ok($done->seen($sha3, "default"), "still see the entry");
 }
 

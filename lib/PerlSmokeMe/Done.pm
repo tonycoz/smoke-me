@@ -1,4 +1,4 @@
-package PerlSmoker::Done;
+package PerlSmokeMe::Done;
 use v5.36;
 
 sub new ($class, $filename, $maxage = 365) {
@@ -14,6 +14,10 @@ sub new ($class, $filename, $maxage = 365) {
     $self;
 }
 
+sub _pv ($pv) {
+    $pv =~ s!([^\p{Print}])!sprintf "\\{%x}", ord($1)!ger;
+}
+
 sub _load ($self) {
     open my $fh, "<", $self->{filename}
       or die "Cannot open $self->{filename}: $!";
@@ -22,8 +26,8 @@ sub _load ($self) {
     my %seen;
     for my $line (@lines) {
       my ($what, $when) = split ' ', $line;
-      $what =~ m(^[0-9a-f]{32}-[a-zA-Z0-9/_+.-]+$)
-        or die "Invalid run $what found in seen file\n";
+      $what =~ m(^[0-9a-f]{40}-[a-zA-Z0-9/_+.-]+$)
+        or die "Invalid run ", _pv($what), " found in seen file\n";
       $when =~ /^[1-9][0-9]+$/
         or die "Invalid epoch $when found in seen file\n";
       $seen{$what} = $when;
@@ -33,11 +37,11 @@ sub _load ($self) {
 }
 
 sub seen ($self, $sha, $config_name) {
-    $self->{seen}{"$sha-$config_name"};
+    $self->{_seen}{"$sha-$config_name"};
 }
 
 sub saw ($self, $sha, $config_name) {
-    $self->{seen}{"$sha-$config_name"} = time;
+    $self->{_seen}{"$sha-$config_name"} = time;
     $self->_update;
 }
 
