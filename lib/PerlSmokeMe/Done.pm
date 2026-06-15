@@ -8,7 +8,8 @@ sub new ($class, $filename, $maxage = 365) {
     my $self = bless {
         filename => $filename,
         workfile => $workfile,
-        maxage => $maxage
+        maxage => $maxage,
+        save => 1,
     }, $class;
     $self->_load;
     $self;
@@ -37,12 +38,22 @@ sub _load ($self) {
 }
 
 sub seen ($self, $sha, $config_name) {
+    ref $sha and die "seen: sha must be a string";
+    ref $config_name and die "seen: config_name must be a string";
     $self->{_seen}{"$sha-$config_name"};
 }
 
 sub saw ($self, $sha, $config_name) {
+    defined $sha or die "saw: sha not defined";
+    defined $config_name or die "saw: config_name not defined";
+    ref $sha and die "saw: sha must be a string";
+    ref $config_name and die "saw: config_name must be a string";
     $self->{_seen}{"$sha-$config_name"} = time;
     $self->_update;
+}
+
+sub set_save ($self, $value) {
+    $self->{save} = $value;
 }
 
 sub _age ($self) {
@@ -54,6 +65,9 @@ sub _age ($self) {
 
 sub _update ($self) {
     $self->_age;
+
+    $self->{save} or return;
+    
     my $seen = $self->{_seen};
 
     open my $fh, ">", $self->{workfile}
@@ -79,6 +93,9 @@ PerlSmoker::Done - a simple database of processed shas and configs
      # process this sha with config
      $done->saw($sha, $config_name);
   }
+  # disable saving
+  $done->set_save(0);
+  $done->saw($sha, $some_config); # not saved
 
 =head1 DESCRIPTION
 

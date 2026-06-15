@@ -1,258 +1,235 @@
 #!perl -w
 use strict;
-use POSIX qw(strftime);
-use File::Find;
-use Config::JSON;
 use FindBin;
 use lib "$FindBin::Bin/lib";
-use PerlSmoker::Push qw(smoke_push status_push);
+use PerlSmokeMe::App;
 
-my $cfg_file = shift || "smokeme.cfg";
+PerlSmokeMe::App->run(\@ARGV);
 
-my $cfg = Config::JSON->new($cfg_file);
+=head1 NAME
 
-my $base = $cfg->get("base");
-my $gitbase = $cfg->get("gitbase") || "$base/perl";
-my $copy = $cfg->get("copy") || "$base/copy";
-my $smoke = $cfg->get("smoke") || "$base/smoke";
-my $build_dir = $cfg->get("build") || "$base/perl-current";
-my $dot_patch = "$copy/.patch";
-my $seen_file = "$base/seen.txt";
-my $seen_file_tmp = "$base/seen.txt.work";
-my $seen_age = 86_400 * 365;
-my $post_key = $cfg->get("postkey") or die "No postkey";
+smoke-me-smoker.pl - run build smoke tests continuously
 
-my $gitfetchopts = $cfg->get("gitfetchopts") // '';
+=head1 SYNOPSIS
 
-my $queue_dir = $cfg->get("queue") || "$base/queue";
--d $queue_dir or die "$queue_dir isn't a directory";
+  # select a branch and config and don't actually run it
+  # (for checking configuration)
+  perl smoke-me-smoker.pl run -c1
 
-my $os = `uname -s`;
-chomp $os;
-my $arch = `uname -m`;
-chomp $arch;
-my $host = `uname -n`;
-chomp $host;
+  # live, run smokes forever
+  perl smoke-me-smoker.pl -a run
 
-my %seen;
+=head1 DESCRIPTION
 
-{
-  my @seen = `cat $seen_file`;
-  chomp @seen;
-  %seen = map { split ' ' } @seen;
-};
+Based on the configuration, this runs Test::Smoke runs on the the git
+tree, selecting a branch and build configuration file based on the
+configured rules.
 
-my %cfgs = %{$cfg->get("configs")};
+This expects a specific layout, most of which is setup by the
+Test::Smoke install and its configuration.
 
-my @cfg_names = keys %cfgs;
+When configuring Test::Smoke you need to ensure:
 
-my @other_branches = @{$cfg->get("others")};
-my @others;
-for my $branch (@other_branches) {
-  push @others, map [ $branch, $_ ], @cfg_names;
-}
+=over
 
-# use Data::Dumper;
-# $Data::Dumper::Terse = 1;
-# print "others: ", Dumper \@others;
+=item *
 
-# print "base: $base\n";
-# print "cfgs: ", Dumper(\%cfgs), "\n";
-# print "gitbase: $gitbase\n";
-# print "copy: $copy\n";
-# print "smoke: $smoke\n";
-# print "build: $build_dir\n";
-# print "patch: $dot_patch\n";
-# print "seen: $seen_file\n";
-# print "post: $post_key\n";
+"The source tree sync method" - must be "git".
 
-while (1) {
-  my $did_run = 0;
-  my $good = eval {
-    chdir $gitbase or die "chdir $gitbase: $!\n";
-    system "git clean -dxf";
-    system "git fetch $gitfetchopts"
-      and die "TEMP: git fetch\n";
-    system "git checkout blead"
-      and die "git checkout blead";
-    system "git merge origin/blead"
-      and die "git merge origin/blead";
-    my @branches = map substr($_, 2), `git branch -a`;
-    chomp @branches;
+=item *
 
-    my $cfg;
-    my $which;
-    my @smokeme = grep m(^(remotes/)?origin/smoke[-_]me/[a-zA-Z0-9/_+.-]+\z), @branches;
+"Clone bare git repository?" - must be Y (needed to propagate remote
+branches through to the build tree.)
 
-    my @cand = grep !$seen{branch_patch($_). "-default"}, @smokeme;
-    if (@cand) {
-      $cfg = "default";
-      $which = $cand[rand @cand];
-    }
+=item *
 
-    unless ($which) {
-      # look for an alt branch
-      @cand = grep !$seen{branch_patch($_) . "-default"}, @other_branches;
+"Skip smoke unless patchlevel changed?" - should be N if your are
+smoking multiple configurations.
 
-      if (@cand) {
-	$cfg = "default";
-	$which = $cand[rand @cand];
-      }
-    }
+=back
 
-    unless ($which) {
-      # look for an alt cfg smoke-me
-      my @cand;
-      for my $branch (@smokeme) {
-	my $bpatch = branch_patch($branch);
-	for my $ccfg (@cfg_names) {
-	  push @cand, [ $branch, $ccfg ]
-	    unless $seen{"$bpatch-$ccfg"};
-	}
-      }
+You will need to run a single smoke with F<smokecurrent.sh> to
+populate the git trees.
 
-      if (@cand) {
-	($which, $cfg) = @{$cand[rand @cand]};
-      }
-    }
+You may want to manually populate the "from" key in
+F<smokecurrent_config> to get an email address passed through to the
+report.
 
-    unless ($which) {
-      my @cand = grep !$seen{branch_patch($_->[0]) . "-" . $_->[1]}, @others;
+=over
 
-      if (@cand) {
-	($which, $cfg) = @{$cand[rand @cand]};
-      }
-    }
+=item *
 
-    $which or return 1;
+F<base/seen.txt> - a text file tracking the builds that have been run.
+This should be created as an empty file during setup (eg. with C<touch
+seen.txt>).
 
-    # clean up old extract
-    if (-d $copy) {
-      system "rm -rf $copy"
-	and die "rm -rf $copy";
-    }
-    my $patch = branch_patch($which);
-    print "Extracting $which (", substr($patch, 0, 20), ")\n";
-    # extract it
-    system "git archive --format=tar --prefix=copy/ $which | tar -x -C $base -f -"
-      and die "git archive";
+=item *
 
-    # strip any .gitignore
-    find(sub {
-	   $_ eq '.gitignore' and unlink;
-	 }, $copy);
+F<base/perl-from-github/> - a bare git checkout of the perl repository.
+Created by Test::Smoke.
 
-    status_push
-      (
-       host => $host,
-       status => "smoking",
-       smoke => "$which-$cfg/$patch",
-       key => $post_key,
-      );
-    fake_patch($dot_patch, $which, $patch);
-    -e "$smoke/smokecurrent.lck"
-      and die "Smoker locked, remove lock file";
-    my $cfg_opts = $cfgs{$cfg}{config};
-    print "Smoking $which-$cfg/$patch...\n";
-    system "cd $smoke && ./smokecurrent.sh -nosmartsmoke -nomail $cfg_opts </dev/null";
-    #or die "smoke error";
-    $did_run = 1;
+=item *
 
-    $seen{"$patch-$cfg"} = time;
+F<base/smoke/> - the Test::Smoke installation.
 
-    print "Posting to site\n";
-    my $log = "$smoke/smokecurrent.log";
-    my $log_gz = $log . ".gz";
-    system "gzip <$log >$log_gz";
+=item *
 
-    my $report_name = "$build_dir/mktest.rpt";
+F<base/perl-current/> - the git checkout used to actually run the
+smoke tests.  Created by Test::Smoke.
 
-    my $report;
-    open $report, ">>", $report_name;
-    print $report "\nLogs at http://perl.develop-help.com/reports/\n";
-    print $report "Branch: $which\n";
-    print $report "Configuration: $cfg\n";
-    close $report;
+=item *
 
-    system "cd $smoke && ./mailrpt.pl -c smokecurrent_config";
+F<base/smoke-me/> - this software.
 
-    my %opts =
-      (
-       cfg => $cfg,
-       branch => $which,
-       sha => $patch,
-       log => $log_gz,
-       out => "$build_dir/mktest.out",
-       rpt => $report_name,
-       os => $os,
-       arch => $arch,
-       host => $host,
-       when => strftime("%Y-%m-%d %H:%M:%S", gmtime),
-       key => $post_key,
-       _queue => $queue_dir,
-      );
-    smoke_push(%opts);
+=item *
 
-    1;
-  };
-  unless ($good) {
-    my $error = $@;
-    unless ($error =~ s/^TEMP://) {
-      die $error;
-    }
-    print "Temporary (?) error: $@  ";
-  }
+F<base/smoke-me/smoke-me.cfg> - a JSON file with any configuration.
+This can be just C<{"base":"your base directory"}> if you use the
+described layout.
 
-  {
-    open my $seen_fh, ">", $seen_file_tmp or die "Create $seen_file_tmp: $!";
-    for my $key (keys %seen) {
-      print $seen_fh "$key $seen{$key}\n";
-    }
-    close $seen_fh;
-    rename $seen_file_tmp, $seen_file
-      or die "Cannot rename $seen_file_tmp to $seen_file: $!";
-  }
+=back
 
-  unless ($did_run) {
+=head1 OPTIONS
+
+The base options are:
+
+=over
+
+=item C<-a> - makes the operations active.  Otherwise changes to the
+seen database are not saved and the smokes are not invoked.  The idea
+is to test your configuration with no C<-a> then add C<-a> for live
+use.
+
+=item C<-c filename> - specify the configuration filename.  This
+defaults to F<smoke-me.cfg> in the same directory as
+F<smoke-me-smoker.pl>.
+
+=item C<-v> - increase verbosity (currently ignored)
+
+=back
+
+Following the base options is a command, currently only:
+
+=over
+
+=item C<run>
+
+Starts running smokes.  Takes one option:
+
+C<-c count> - the number of smokes to run.  By default this is zero
+which means to run forever.
+
+=back
+
+=head1 What is tested?
+
+The default configuration is to test the following branches, if
+they've been updated in the last 30 days:
+
+=over
+
+=item *
+
+C<blead> - the main development branch
+
+=item *
+
+C<maint-5.xx> - the maint perl branches
+
+=item *
+
+C<smoke-me/*> - the topic branches proposed for smoke testing.  Note
+that the configuration limits the possible names to avoid shell
+metacharacters and Unicode since I don't want to deal with either, see
+the details below.
+
+=back
+
+By default the selected branch is run with the C<default>
+configuration which uses the Test::Smoke installed
+C<smokecurrent.buildcfg> file, which you can adapt as you wish.
+
+=head1 Configuring what is run.
+
+The branches to run are specified by the C<branches> key in
+F<smoke-me.cfg>, with the default specified as if by:
+
+   {
+     "blead":
+         {
+             "name": "blead",
+             "priority": 1
+         },
+     "maint":
+         {
+             "name": "qr/maint-\d\.\d\d/",
+             "priority": 2
+         },
+     "smoke-me":
+         {
+             "name": "qr/smoke-me/[a-zA-Z0-9/_+.-]+/",
+             "priority": 3,
+         },
+   }
+
+Since JSON doesn't support qr// it is emulated, if the name starts
+with C<qr/> and ends with C</> those are removed and the remains are
+compiled as a qr// object.  No other escaping is done.
+
+If the C<name> is a regular expression it is matched against the full
+branch name, ie as if C</^$yourre$/>.
+
+Branches are selected in priority order, so by default blead is
+selected if it has an untested configuration, then maint, then
+smoke-me.
+
+The priority order for equal priorities is unspecified.
+
+You can respecify a key to replace it, and you need to supply a
+complete replacement.  For example if you set:
+
+   "branches":{
+      "maint":{}
+   }
+
+in F<smoke-me.cfg> then the maint-5.xx branches are not tested, since
+entries with no C<name> are removed.
+
+Or add more branches:
+
+   "branches":
+   {
+     "my-branches":
+     {
+        "name":"qr/my-branches/.*/",
+     }
+   }
+
+The configurations to run are specified similarly, the defauilt is:
+
     {
-      my @del = grep $seen{$_} < time() - $seen_age, keys %seen;
-      print "Seen cleanup @del\n" if @del;
-      delete @seen{@del};
+       "default":
+         {
+             "name": "default",
+             "priority": 0,
+             "file": "smokecurrent.buildcfg"
+         }
     }
-    status_push
-      (
-       host => $host,
-       status => "idle",
-       key => $post_key,
-      );
-    print "Nothing to do, waiting\n";
-    sleep 600;
-  }
-}
 
-# get the sha1 for each patch
-# must be called with cwd in git checkout
-sub branch_patch {
-  my ($branch) = @_;
+You can add extra configurations by adding extra keys:
 
-  my $entry = `git rev-list --max-count=1 $branch`;
-  chomp $entry;
+    "configs":
+      {
+        "asan":
+          {
+             "name":"asan",
+             "priority":1,
+             "file":"smokecurrent.buildasan"
+          }
+      }
 
-  return $entry;
-}
+or replace the C<default> configuration, similar to the way you do for
+branches.  Note the key is used simply for configuration replacement
+and doesn't need to match the configuration C<name> field.
 
-# fake up a .patch file
-sub fake_patch {
-  my ($out, $branch, $patch) = @_;
-
-  (my $out_branch = $branch) =~ s(^(?:remotes/)?origin/)();
-  my ($desc) = `git describe $branch`;
-  chomp $desc;
-
-  my $tstamp = `git log -1 --pretty="format:%ct" $patch`;
-  my $when = strftime "%Y-%m-%d.%H:%M:%S",gmtime($tstamp || time);
-  open my $pf, ">", $out or die "Cannot create $out: $!";
-  
-  print $pf "$out_branch $when $patch $desc\n";
-  close $pf;
-}
+=cut

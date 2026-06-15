@@ -10,15 +10,20 @@ sub new ($class, $cfg_file) {
     my $base = $cfg->get("base") // "$FindBin::Bin/..";
     # git checkout to update and search for branches
     my $gitbase = $cfg->get("gitbase") || "$base/perl-from-github";
-    -d $gitbase && -d "$gitbase/.git" && -f "$gitbase/perl.h"
-        or die "$cfg_file: gitbase '$gitbase' isn't a git clone of perl\n";
+    -d $gitbase && -f "$gitbase/config" && -d "$gitbase/refs"
+        or die "$cfg_file: gitbase '$gitbase' isn't a bare git clone of perl\n";
     # where to find the Test-Smoke installation
     my $smoke = $cfg->get("smoke") // "$base/smoke";
     -d $smoke && -f "$smoke/tssmokeperl.pl"
         or die "$cfg_file: smoke '$smoke' not a Test::Smoke install\n";
+    -f "$smoke/smokecurrent.lck"
+        and die "$cfg_file: smoke directory '$smoke' has lock file\n";
     my $seen_file = $cfg->get("seen") // "$base/seen.txt";
     -f $seen_file
-        or die "$cfg_file: seen '$seen_file' not a file\n";
+        or die <<~ERROR;
+            $cfg_file: seen '$seen_file' not a file
+            If this is a new install, then `touch $seen_file`.
+            ERROR
     my $seen_age = $cfg->get("seen_age") // 86_400 * 365;
     looks_like_number($seen_age)
         or die "$cfg_file: seen_age '$seen_age' must be a number\n";
@@ -96,7 +101,9 @@ sub new ($class, $cfg_file) {
             or die "$err_prefix: file $full_cfg isn't a file\n";
     }
 
-    my $gitfetchopts = $cfg->get("gitfetchopts") // '-p';
+    my $gitfetchopts = $cfg->get("gitfetchopts") // [ '-p' ];
+    reftype $gitfetchopts eq "ARRAY"
+        or die "$cfg_file: gitfetchopts must be an array reference\n";
 
     bless
     {
@@ -128,14 +135,14 @@ sub seen_age ($self) {
 }
 
 sub gitfetchopts ($self) {
-    $self->{gitfetchopts};
+    $self->{gitfetchopts}->@*;
 }
 
-sub branches ($self) {
+sub branch_rules ($self) {
     $self->{branches}->@*;
 }
 
-sub configs ($self) {
+sub config_rules ($self) {
     $self->{configs}->@*;
 }
 

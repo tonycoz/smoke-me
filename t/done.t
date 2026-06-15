@@ -37,11 +37,11 @@ EOS
     ok(!$done->seen($sha1, "other"), "or the other old entry");
     ok($done->seen($sha2, "default"), "do have the newer entry");
     $done->saw($sha3, "default");
-    ok($done->seen($sha3, "default"), "see the entry we just added");
+    ok($done->seen($sha3, "default"), "see the entry we $sha3-default just added");
     undef $done;
 
     $done = PerlSmokeMe::Done->new($seen_file);
-    ok($done->seen($sha3, "default"), "still see the entry");
+    ok($done->seen($sha3, "default"), "still see the entry $sha3-default");
 }
 
 done_testing();

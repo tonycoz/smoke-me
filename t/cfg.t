@@ -2,33 +2,15 @@
 use v5.36;
 use PerlSmokeMe::Cfg;
 use Test::More;
-use File::Temp "tempdir";
-use JSON;
+use lib 't/lib';
+use PerlSmokeMe::TestUtil qw(try_cfg cfg_dir);
 
-my $dir = tempdir;
-
-{
-    my $gitdir = "$dir/perl-from-github";
-    mkdir $gitdir;
-    system "git", "-C", $gitdir, "init";
-    # trick git dir detection
-    open my $fh, ">", "$gitdir/perl.h";
-    close $fh;
-    # trick smoke dir detection
-    my $smdir = "$dir/smoke";
-    mkdir $smdir;
-    open $fh, ">", "$smdir/tssmokeperl.pl";
-    close $fh;
-    open $fh, ">", "$smdir/smokecurrent.buildcfg";
-    close $fh;
-    open $fh, ">", "$dir/seen.txt";
-    close $fh;
-}
+my $dir = cfg_dir();
 
 {
     my $cfg = try_cfg({ base => $dir });
     ok($cfg, "simple, valid") or die $@;
-    is_deeply([ $cfg->branches ],
+    is_deeply([ $cfg->branch_rules ],
               [
                {
                    key => "blead",
@@ -46,7 +28,7 @@ my $dir = tempdir;
                    priority => 3,
                },
               ], "check default branches");
-    is_deeply([ $cfg->configs ],
+    is_deeply([ $cfg->config_rules ],
               [
                {
                    key => "default",
@@ -90,13 +72,3 @@ my $dir = tempdir;
 
 done_testing;
 
-sub try_cfg ($hash) {
-    my $file = "$dir/test.cfg";
-    open my $fh, ">", $file
-        or die "Cannot create $file: $!";
-    print $fh encode_json($hash);
-    close $fh
-        or die "Cannot cloe $file: $!";
-
-    eval { PerlSmokeMe::Cfg->new($file) };
-}

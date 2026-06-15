@@ -10,10 +10,11 @@ sub new ($class, %opts) {
 }
 
 sub branches ($self) {
-    my @branches = $self->_git("branch", "-r");
+    my @branches = $self->_git("branch");
     chomp @branches;
-    @branches = grep m( +(?:remotes/)?\Q$self->{upstream}\E/), @branches;
-    s(^ +(?:remotes/)?\Q$self->{upstream}\E/)() for @branches;
+    #@branches = grep m( +(?:remotes/)?\Q$self->{upstream}\E/), @branches;
+    #s(^ +(?:remotes/)?\Q$self->{upstream}\E/)() for @branches;
+    s(^\*?\s+)() for @branches;
     return map {
         PerlSmokeMe::Git::Branch->new($self, $_)
     }
@@ -64,7 +65,7 @@ sub _info ($self) {
     unless ($self->{_info}) {
         my ($line) = $self->{git}
           ->_git("log", "-n1", '--pretty=%H %ct',
-                 "$self->{git}{upstream}/$self->{name}");
+                 $self->{name});
         $line or die "Cannot load info for $self->{name}";
         chomp $line;
         my @fields = split ' ', $line;
