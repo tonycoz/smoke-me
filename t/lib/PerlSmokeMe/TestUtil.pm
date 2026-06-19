@@ -14,7 +14,7 @@ sub cfg_dir {
 
         my $gitdir = "$dir/perl-from-github";
         mkdir $gitdir;
-        system "git", "-C", $gitdir, "init";
+        system "git", "-C", $gitdir, "--bare", "init";
         # trick git dir detection
         open my $fh, ">", "$gitdir/perl.h";
         close $fh;
@@ -24,6 +24,9 @@ sub cfg_dir {
         open $fh, ">", "$smdir/tssmokeperl.pl";
         close $fh;
         open $fh, ">", "$smdir/smokecurrent.buildcfg";
+        close $fh;
+        # used in a config test
+        open $fh, ">", "$smdir/smokecurrent.buildasan";
         close $fh;
         open $fh, ">", "$dir/seen.txt";
         close $fh;
