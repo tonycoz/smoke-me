@@ -1,34 +1,64 @@
 package PerlSmokeMe::Matcher;
 use v5.36;
 use strict;
+use List::Util qw(shuffle);
 
-sub new ($class, $done, $branch_rules, $config_rules) {
+sub new ($class, $done, $branch_rules, $config_rules, $verbose=0) {
     $branch_rules = [ sort { $a->{priority} <=> $b->{priority} } @$branch_rules ];
     $config_rules = [ sort { $a->{priority} <=> $b->{priority} } @$config_rules ];
+
+    # group by sum of priorities
+    my %grouped;
+    for my $brule (@$branch_rules) {
+        for my $crule (@$config_rules) {
+            my $priority = $brule->{priority} + $crule->{priority};
+            push $grouped{$priority}->@*, [ $brule, $crule, $priority ];
+        }
+    }
+    my @grouped = @grouped{ sort { $a <=> $b } keys %grouped };
+    if ($verbose >= 2) {
+        print "Grouped rules\n";
+        for my $group (@grouped) {
+            print "  Group priority $group->[0][2]\n";
+            for my $entry (@$group) {
+                print "    $entry->[0]{name}  $entry->[1]{name}\n";
+            }
+        }
+    }
                       
     bless {
         done => $done,
         brules => $branch_rules,
         crules => $config_rules,
+        grouped => \@grouped,
+        verbose => $verbose,
     }, $class;
+}
+
+sub _match_branch ($branches, $name) {
+    if (ref $name) {
+        my $re = qr/^$name$/;
+        return grep $_->name =~ $re, @$branches;
+    }
+    else {
+        return grep $_->name eq $name, @$branches;
+    }
 }
 
 sub match ($self, $branches) {
     # we only test branches updated in the last 30 days
     my $earliest = time() - 30 * 86_400;
     my $done = $self->{done};
-    for my $brule ($self->{brules}->@*) {
-        my @mbranches;
-        my $name = $brule->{name};
-        if (ref $name) {
-            my $re = qr/^$name$/;
-            @mbranches = grep $_->name =~ $re, @$branches;
-        }
-        else {
-            @mbranches = grep $_->name eq $name, @$branches;
-        }
-        @mbranches = grep $_->epoch > $earliest, @mbranches;
-        for my $crule ($self->{crules}->@*) {
+    my $verbose = $self->{verbose};
+
+    print "Scanning\n" if $verbose;
+    for my $group ($self->{grouped}->@*) {
+        my @options = shuffle @$group;
+        for my $option (@options) {
+            my ($brule, $crule, $priority) = @$option;
+            my @mbranches =
+                grep { $_->epoch > $earliest }
+                _match_branch($branches, $brule->{name});
             my @cand = grep !$done->seen($_->sha, $crule->{name}),
                 @mbranches;
             if (@cand) {
@@ -53,9 +83,9 @@ PerlSmokeMe::Matcher - match branches against branch and config rules.
 
   my $done = PerlSmokeMe::Done->new($filename);
   my $git = PerlSmokeMe::Git->new($gitdir);
-  my $matcher = PerlSmokeMe::Matcher->new($done, \@branch_rules, \@config_rules);
+  my $matcher = PerlSmokeMe::Matcher->new($done, \@branch_rules, \@config_rules, $verbose);
   my @branches = $git->branches;
-  my ($branch_object, $config_entry) = $matcher->match(\@branches);
+  my ($branch_object, $config_rule) = $matcher->match(\@branches);
 
 =head1 DESCRIPTION
 
@@ -64,7 +94,7 @@ configured branch and test configuration rules.
 
 Each branch rule is a hash:
 
-  my %rule =
+  my %branch_rule =
     (
      name => "name" | qr/regexp/,
      priority => $some_priority
@@ -72,5 +102,14 @@ Each branch rule is a hash:
 
 C<name> can be a literal name, such as "blead", or a regexp matched
 against a branch name, like C<qr/smoke-me\/.*/>.
+
+Each config rule is a similar hash:
+
+  my %config_rule =
+    (
+     name => "name",
+     priority => $some_priority,
+     file => "smokecurrent.build.cfg", # some build cfg filename
+    );
 
 =cut

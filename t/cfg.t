@@ -15,17 +15,17 @@ my $dir = cfg_dir();
                {
                    key => "blead",
                    name => "blead",
-                   priority => 1,
+                   priority => 10,
                },
                {
                    key => "maint",
                    name => qr/maint-\d\.\d\d/,
-                   priority => 2,
+                   priority => 20,
                },
                {
                    key => "smoke-me",
                    name => qr(smoke-me/[a-zA-Z0-9/_+.-]+),
-                   priority => 3,
+                   priority => 30,
                },
               ], "check default branches");
     is_deeply([ $cfg->config_rules ],
@@ -41,7 +41,7 @@ my $dir = cfg_dir();
     is($cfg->smoke, "$dir/smoke", "smoke");
     is($cfg->seen, "$dir/seen.txt", "seen");
     is($cfg->seen_age, 365 * 86_400, "seen_age");
-    is($cfg->gitfetchopts, "-p", "gitfetchopts");
+    is_deeply([ $cfg->gitfetchopts ], [ "-p" ], "gitfetchopts");
 }
 {
     my $cfg = try_cfg({ base => $dir, branches => [] });
@@ -67,6 +67,77 @@ my $dir = cfg_dir();
     my $cfg = try_cfg({ base => $dir, seen_age => "bad" });
     ok(!$cfg, "fail config with bad seen_age");
     like($@, qr/seen_age '.*' must be a number/, "check error");
+}
+
+{
+    my $cfg = try_cfg({ base=> $dir,
+                        branches => {
+                            maint => { name => "" },
+                            pulls => { name => "qr/pull//",
+                                       priority => 40 } } })
+        or die $@;
+    is_deeply([ $cfg->branch_rules ],
+              [
+               {
+                   key => "blead",
+                   name => "blead",
+                   priority => 10,
+               },
+               {
+                   key => "pulls",
+                   name => qr(pull/),
+                   priority => 40,
+               },
+               {
+                   key => "smoke-me",
+                   name => qr(smoke-me/[a-zA-Z0-9/_+.-]+),
+                   priority => 30,
+               },
+              ], "new branch rule config");
+}
+
+{
+    my $cfg = try_cfg({ base=> $dir,
+                        configs => {
+                            default => { name => "" },
+                            asan => { name => "asan",
+                                      file => "smokecurrent.buildasan",
+                                      priority => 4 } } })
+        or die $@;
+    is_deeply([ $cfg->config_rules ],
+              [
+               {
+                   key => "asan",
+                   name => "asan",
+                   priority => 4,
+                   file => "smokecurrent.buildasan",
+               },
+              ], "new config rule config (remove rule)");
+}
+{
+    my $cfg = try_cfg({ base=> $dir,
+                        configs => {
+                            default => {
+                                priority => 1 },
+                            asan => { name => "asan",
+                                      file => "smokecurrent.buildasan",
+                                      priority => 0 } } })
+        or die $@;
+    is_deeply([ $cfg->config_rules ],
+              [
+               {
+                   key => "asan",
+                   name => "asan",
+                   priority => 0,
+                   file => "smokecurrent.buildasan",
+               },
+               {
+                   key => "default",
+                   name => "default",
+                   priority => 1,
+                   file => "smokecurrent.buildcfg",
+               },
+              ], "new config rule config (rule mod)");
 }
 
 

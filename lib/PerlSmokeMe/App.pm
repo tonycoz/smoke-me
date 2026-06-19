@@ -25,7 +25,7 @@ sub new ($class, $argv) {
     my $seen = PerlSmokeMe::Done->new($cfg->seen, $cfg->seen_age);
     my @brules = $cfg->branch_rules;
     my @crules = $cfg->config_rules;
-    my $matcher = PerlSmokeMe::Matcher->new($seen, \@brules, \@crules);
+    my $matcher = PerlSmokeMe::Matcher->new($seen, \@brules, \@crules, $verbose);
     my $invoker = PerlSmokeMe::Invoker->new($cfg);
     $seen->set_save($active);
     $invoker->set_real($active);

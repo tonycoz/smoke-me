@@ -27,28 +27,37 @@ sub new ($class, $cfg_file) {
     my $seen_age = $cfg->get("seen_age") // 86_400 * 365;
     looks_like_number($seen_age)
         or die "$cfg_file: seen_age '$seen_age' must be a number\n";
-    my $branch_rules = $cfg->get("branches") // {};
-    ref $branch_rules && reftype($branch_rules) eq "HASH"
+    my $cfg_branch_rules = $cfg->get("branches") // {};
+    ref $cfg_branch_rules && reftype($cfg_branch_rules) eq "HASH"
         or die "$cfg_file: branches must be a hash\n";
     my %branch_rules =
         (
          blead =>
          {
              name => "blead",
-             priority => 1
+             priority => 10,
          },
          maint =>
          {
              name => qr(maint-\d\.\d\d),
-             priority => 2
+             priority => 20,
          },
          "smoke-me" =>
          {
              name => qr(smoke-me/[a-zA-Z0-9/_+.-]+),
-             priority => 3,
+             priority => 30,
          },
-         %$branch_rules,
         );
+    for my $key (keys %$cfg_branch_rules) {
+        my $cfg_rule = $cfg_branch_rules->{$key};
+        my $rule = $branch_rules{$key};
+        if ($rule) {
+            $rule->@{keys %$cfg_rule} = values %$cfg_rule;
+        }
+        else {
+            $branch_rules{$key} = $cfg_rule;
+        }
+    }
     # allows config to delete default rules
     # preserve the rule keys for reporting
     for my $branch_key (keys %branch_rules) {
@@ -70,8 +79,8 @@ sub new ($class, $cfg_file) {
             or die "$err_prefix: priority must be numeric\n";
     }
 
-    my $config_rules = $cfg->get("configs") // {};
-    ref $config_rules && reftype($config_rules) eq "HASH"
+    my $cfg_config_rules = $cfg->get("configs") // {};
+    ref $cfg_config_rules && reftype($cfg_config_rules) eq "HASH"
         or die "$cfg_file: configs must be a hash\n";
     my %config_rules =
         (
@@ -81,8 +90,17 @@ sub new ($class, $cfg_file) {
              priority => 0,
              file => "smokecurrent.buildcfg",
          },
-         %$config_rules,
         );
+    for my $key (keys %$cfg_config_rules) {
+        my $cfg_rule = $cfg_config_rules->{$key};
+        my $rule = $config_rules{$key};
+        if ($rule) {
+            $rule->@{keys %$cfg_rule} = values %$cfg_rule;
+        }
+        else {
+            $config_rules{$key} = $cfg_rule;
+        }
+    }
     for my $config_key (keys %config_rules) {
         $config_rules{$config_key}{key} = $config_key;
     }
@@ -135,14 +153,17 @@ sub seen_age ($self) {
 }
 
 sub gitfetchopts ($self) {
+    wantarray or die "gitfetchopts must be called in list context";
     $self->{gitfetchopts}->@*;
 }
 
 sub branch_rules ($self) {
+    wantarray or die "branch_rules must be called in list context";
     $self->{branches}->@*;
 }
 
 sub config_rules ($self) {
+    wantarray or die "config_rules must be called in list context";
     $self->{configs}->@*;
 }
 

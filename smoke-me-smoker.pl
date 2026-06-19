@@ -104,7 +104,7 @@ use.
 defaults to F<smoke-me.cfg> in the same directory as
 F<smoke-me-smoker.pl>.
 
-=item C<-v> - increase verbosity (currently ignored)
+=item C<-v> - increase verbosity
 
 =back
 
@@ -151,6 +151,16 @@ C<smokecurrent.buildcfg> file, which you can adapt as you wish.
 
 =head1 Configuring what is run.
 
+Branches and configurations are selected in priority order, so by
+default blead is selected if it has an untested configuration, then
+maint, then smoke-me.
+
+Branch rule/configuration rules are selected in sum of branch rule and
+configuration rule priority, lowest priority first.
+
+If multiple branch/configuration rules have the same priority sum they are
+selected from randomly.
+
 The branches to run are specified by the C<branches> key in
 F<smoke-me.cfg>, with the default specified as if by:
 
@@ -158,17 +168,17 @@ F<smoke-me.cfg>, with the default specified as if by:
      "blead":
          {
              "name": "blead",
-             "priority": 1
+             "priority": 10
          },
      "maint":
          {
              "name": "qr/maint-\d\.\d\d/",
-             "priority": 2
+             "priority": 20
          },
      "smoke-me":
          {
              "name": "qr/smoke-me/[a-zA-Z0-9/_+.-]+/",
-             "priority": 3,
+             "priority": 30
          },
    }
 
@@ -179,17 +189,13 @@ compiled as a qr// object.  No other escaping is done.
 If the C<name> is a regular expression it is matched against the full
 branch name, ie as if C</^$yourre$/>.
 
-Branches are selected in priority order, so by default blead is
-selected if it has an untested configuration, then maint, then
-smoke-me.
-
 The priority order for equal priorities is unspecified.
 
-You can respecify a key to replace it, and you need to supply a
-complete replacement.  For example if you set:
+You can respecify a key to replace members of that key.  For example
+if you set:
 
    "branches":{
-      "maint":{}
+      "maint":{ "name": "" }
    }
 
 in F<smoke-me.cfg> then the maint-5.xx branches are not tested, since
@@ -202,11 +208,19 @@ Or add more branches:
      "my-branches":
      {
         "name":"qr/my-branches/.*/",
+        "priority": 40
      }
+   }
+
+Change the priority of the "maint" rule:
+
+   "branches":{
+      "maint":{ "priority": 10 }
    }
 
 The configurations to run are specified similarly, the defauilt is:
 
+   "configs":
     {
        "default":
          {
