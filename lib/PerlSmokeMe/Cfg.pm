@@ -1,11 +1,10 @@
 package PerlSmokeMe::Cfg;
 use v5.36;
-use Config::JSON;
 use FindBin;
 use Scalar::Util qw(looks_like_number reftype);
 
 sub new ($class, $cfg_file) {
-    my $cfg = Config::JSON->new($cfg_file);
+    my $cfg = MyCfg->new($cfg_file);
 
     my $base = $cfg->get("base") // "$FindBin::Bin/..";
     # git checkout to update and search for branches
@@ -165,6 +164,21 @@ sub branch_rules ($self) {
 sub config_rules ($self) {
     wantarray or die "config_rules must be called in list context";
     $self->{configs}->@*;
+}
+
+package MyCfg;
+use Cpanel::JSON::XS;
+
+sub new ($class, $file) {
+    open my $fh, "<", $file
+        or die "Cannot open $file: $!";
+    my $raw = do { local $/; <$fh> };
+    my $data = Cpanel::JSON::XS::decode_json($raw);
+    bless $data, $class;
+}
+
+sub get ($self, $key) {
+    $self->{$key};
 }
 
 1;
