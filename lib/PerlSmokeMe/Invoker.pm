@@ -42,9 +42,11 @@ sub invoke ($self, $branch_name, $build_cfg) {
     my $cfg_name = $cfg_fh->filename;
     my %cfg = $self->{orig_config}->%*;
 
-    print "Building configuration file $cfg_name with config $build_cfg->{file}\n";
-    $cfg{cfg} = $build_cfg->{file};
-    print $cfg_fh "\$conf = ", Dumper(\%cfg), ";\n";
+    my $build_file = File::Spec->rel2abs($build_cfg->{file}, $self->{cfg}->smoke);
+
+    print "Building configuration file $cfg_name with config $build_file\n";
+    $cfg{cfg} = $build_file;
+    print $cfg_fh Data::Dumper->Dump([\%cfg], [ 'conf' ]), ";\n";
     close $cfg_fh
         or die "Cannot close temp config file: $!";
 

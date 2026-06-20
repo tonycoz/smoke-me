@@ -114,7 +114,7 @@ sub new ($class, $cfg_file) {
             or die "$err_prefix: priority must be numeric\n";
         ref($config_rule->{file})
             and die "$err_prefix: file must be a string\n";
-        my $full_cfg = "$smoke/$config_rule->{file}";
+        my $full_cfg = File::Spec->rel2abs($config_rule->{file}, $smoke);
         -f $full_cfg
             or die "$err_prefix: file $full_cfg isn't a file\n";
     }
