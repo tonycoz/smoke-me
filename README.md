@@ -93,6 +93,11 @@ Some options that do not apply to your platform were found.
 
 You can edit `smokecurrent.buildcfg` as desired.
 
+If you don't choose to send reports for the mailing list you may want
+to add a `from` key to `smokecurrent_config` with your email address
+(or something identifiable) so the source of your smokes can be
+identified for follow-up.
+
 One you've done this, run a sync:
 
 ```
