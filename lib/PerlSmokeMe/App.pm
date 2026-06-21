@@ -120,6 +120,14 @@ perl $0 [globaloptions] run [-c count]
   Run count smokes, default is to run forever
 EOS
     }
+    else if ($cmd eq "help") {
+        print <<"EOS"
+perl $0 help
+  Display general usage
+perl $0 help cmd
+  Display help for command cmd
+EOS
+    }
 }
 
 sub usage ($self) {
