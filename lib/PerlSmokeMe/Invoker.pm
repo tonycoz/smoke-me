@@ -96,7 +96,7 @@ sub _run ($self, @cmd) {
             # there shouldn't be much, but we get an EOF when
             # done
             my $buf;
-            while (defined(my $cnt = sysread($fh, $buf, 1000))) {
+            if (defined(my $cnt = sysread($fh, $buf, 1000))) {
                 print $buf if $cnt;
                 last INVOKE if $cnt == 0;
             }
