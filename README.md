@@ -136,9 +136,9 @@ Test the configuration:
 $ perl smoke-me-smoker.pl -vv run -c1
 ```
 
-which will error if there's a configuration problem, if the
+which will error if there is a configuration problem, if the
 configuration is good it will print a summary of the job selection
-rules, select and job skip running it, something like:
+rules, select a job and then skip running it, something like:
 
 ```
 $ perl smoke-me-smoker.pl -vv run -c1
@@ -170,4 +170,17 @@ To run jobs forever:
 
 ```
 $ perl smoke-me-smoker.pl -a run
+```
+
+Stop the job runner cleanly at the end of the current job:
+
+```
+$ perl smoke-me-smoker.pl stop
+```
+
+Stop the job runner interrupting the current job (up to 10 second
+delay):
+
+```
+$ perl smoke-me-smoker.pl stopnow
 ```
