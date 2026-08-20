@@ -2,6 +2,7 @@ package PerlSmokeMe::App;
 use v5.36;
 use builtin qw(true false);
 use Getopt::Long qw(GetOptionsFromArray :config no_permute bundling);
+use Fcntl qw(LOCK_EX LOCK_NB O_CREAT O_RDWR);
 
 use PerlSmokeMe::Cfg;
 use PerlSmokeMe::Git;
@@ -52,11 +53,23 @@ sub cmd ($self, $argv) {
     if ($cmd eq "run") {
         return $self->cmd_run($argv);
     }
+    elsif ($cmd eq "stop") {
+        return $self->cmd_stop($argv);
+    }
     elsif ($cmd eq "help") {
         $self->cmd_help($argv);
     }
     else {
         print "Unknown command '$cmd'\n";
+    }
+}
+
+sub _wait_stop_or_delay($self, $delay) {
+    my $cfg = $self->{cfg};
+    my $stop_filename = $cfg->stop_filename;
+    my $end = time() + $delay;
+    while (time() < $end && !-e $stop_filename) {
+        sleep(10);
     }
 }
 
@@ -73,8 +86,9 @@ sub _do_one ($self, $last) {
         print "Failed to fetch\n";
         unless ($last) {
             print "  Waiting 5 minutes to try again\n";
-            sleep 300;
+            $self->_wait_stop_or_delay(300);
         }
+        return;
     }
     my @branches = $git->branches;
     my ($branch, $config) = $matcher->match(\@branches);
@@ -95,25 +109,68 @@ sub _do_one ($self, $last) {
         }
         else {
             print "No job found - waiting\n";
-            sleep 300;
+            $self->_wait_stop_or_delay(300);
         }
     }
 }
 
 sub cmd_run ($self, $argv) {
     my $total_count = 0; # forever
+    my $cfg = $self->{cfg};
     GetOptionsFromArray(
         $argv,
         "c|count=i" => \$total_count);
     @$argv
         and die "No use for extra @$argv arguments";
     my $done_count = 0;
+    my $stop_filename = $cfg->stop_filename;
+    if (-e $stop_filename) {
+        print "Removing old stop file\n";
+        unlink $stop_filename
+            or die "Cannot remove $stop_filename: $!\n";
+    }
+    print "Will stop if I see $stop_filename\n";
+    my $pid_filename = $cfg->pid_filename;
+    sysopen my $pid_fh, $pid_filename, O_CREAT | O_RDWR
+        or die "Cannot create $pid_filename: $!";
+    flock($pid_fh, LOCK_EX | LOCK_NB)
+        or die "Cannot lock $pid_filename: $!\n";
+    $pid_fh->autoflush(1);
+    $pid_fh->truncate(0)
+        or die "Cannot truncate $pid_filename: $!\n";
+    print $pid_fh "$$\n";
+
     my $last = false;
     do {
         $last = $total_count != 0 && ++$done_count >= $total_count;
         $self->_do_one($last);
-    } until ($last);
+    } until ($last || -e $stop_filename);
+    if (!$last) {
+        print "Stopped by request\n";
+    }
     0;
+}
+
+sub cmd_stop($self, $argv) {
+    my $cfg = $self->{cfg};
+    @$argv
+        and die "No use for extra @$argv arguments";
+    my $pid_filename = $cfg->pid_filename;
+    my $stop_filename = $cfg->stop_filename;
+    -f $pid_filename
+        or die "No pid file $pid_filename found, not running\n";
+    -e $stop_filename
+        and die "Stop already requested via $stop_filename\n";
+    open my $fh, ">", $stop_filename
+        or die "Cannot create $stop_filename: $!";
+    my $when = localtime;
+    print $fh <<EOS;
+Stop requested
+When: $when
+EOS
+    close $fh
+        or die "Cannot close $stop_filename: $!";
+    print "Stop requested\n";
 }
 
 sub cmd_help ($self, $argv) {
@@ -125,6 +182,12 @@ sub cmd_help ($self, $argv) {
 perl $0 [globaloptions] run [-c count]
   Run count smokes, default is to run forever
 EOS
+    }
+    elsif ($cmd eq "stop") {
+        print <<~EOS;
+            perl $0 [globaloptions] stop
+                Stop after the next job.
+            EOS
     }
     elsif ($cmd eq "help") {
         print <<"EOS"
@@ -145,6 +208,7 @@ Usage:
    -a - actual run, otherwise just prints
    -v - verbosity, -vv more verbose, -vvvvvv very verbose
   $0 run       - run smokes
+  $0 stop      - stop after the next job (or interjob wait)
   $0 help      - display this text
   $0 help cmd  - help for cmd
 EOS

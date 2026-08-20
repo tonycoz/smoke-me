@@ -15,7 +15,8 @@ sub new ($class, $cfg_file) {
     my $smoke = $cfg->get("smoke") // "$base/smoke";
     -d $smoke && -f "$smoke/tssmokeperl.pl"
         or die "$cfg_file: smoke '$smoke' not a Test::Smoke install\n";
-    -f "$smoke/smokecurrent.lck"
+    my $smoke_lockfile = "$smoke/smokecurrent.lck";
+    -f $smoke_lockfile
         and die "$cfg_file: smoke directory '$smoke' has lock file\n";
     my $seen_file = $cfg->get("seen") // "$base/seen.txt";
     -f $seen_file
@@ -122,6 +123,10 @@ sub new ($class, $cfg_file) {
     reftype $gitfetchopts eq "ARRAY"
         or die "$cfg_file: gitfetchopts must be an array reference\n";
 
+    my $pid_filename = $cfg->get("pidfile") // "$base/smoke-me.pid";
+
+    my $stop_filename = $cfg->get("stopfile") // "$base/smoke-me.stop";
+
     bless
     {
         base => $base,
@@ -132,6 +137,9 @@ sub new ($class, $cfg_file) {
         branches => \@branch_rules,
         configs => \@config_rules,
         gitfetchopts => $gitfetchopts,
+        smoke_lockfile => $smoke_lockfile,
+        pid_filename => $pid_filename,
+        stop_filename => $stop_filename,
     }, $class;
 }
 
@@ -164,6 +172,18 @@ sub branch_rules ($self) {
 sub config_rules ($self) {
     wantarray or die "config_rules must be called in list context";
     $self->{configs}->@*;
+}
+
+sub smoke_lockfile($self) {
+    $self->{smoke_lockfile};
+}
+
+sub pid_filename($self) {
+    $self->{pid_filename};
+}
+
+sub stop_filename($self) {
+    $self->{stop_filename};
 }
 
 package MyCfg;
