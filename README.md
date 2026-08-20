@@ -13,6 +13,12 @@ By default only one configuration is built:
 
 - `default` - uses the default `smokecurrent.buildcfg`
 
+## Dependencies
+
+- perl 5.36
+- Test::Smoke, installed as below
+- Cpanel::JSON::XS
+
 ## Installation
 
 First install [Test::Smoke](https://metacpan.org/dist/Test-Smoke), and configure it:
