@@ -10,7 +10,7 @@ sub new ($class, %opts) {
 }
 
 sub branches ($self) {
-    my @branches = $self->_git("branch");
+    my @branches = $self->_git_or_die("branch");
     chomp @branches;
     #@branches = grep m( +(?:remotes/)?\Q$self->{upstream}\E/), @branches;
     #s(^ +(?:remotes/)?\Q$self->{upstream}\E/)() for @branches;
@@ -23,21 +23,28 @@ sub branches ($self) {
     } @branches;
 }
 
+# returns non-zero on success
 sub fetch ($self, @opts) {
-    $self->_git("fetch", @opts);
-    1;
+    my ($out, $ok) = $self->_git("fetch", @opts);
+    return $ok;
 }
 
 sub _git($self, @cmd) {
     unshift @cmd, "git", "-C", $self->{dir};
-    #local $ENV{GIT_WORK_TREE} = $self->{dir};
+
     open my $gitfh, "-|", @cmd
         or die "Cannot run @cmd: $!";
     my @out = <$gitfh>;
-    unless (close $gitfh) {
-        die "Command [@cmd] failed: $?";
-    }
-    @out;
+    my $ok = close $gitfh;
+    
+    (\@out, $ok);
+}
+
+sub _git_or_die($self, @cmd) {
+    my ($out, $ok) = $self->_git(@cmd);
+    $ok
+        or die "Command [@cmd] failed: $?";
+    return @$out;
 }
 
 package PerlSmokeMe::Git::Branch;
@@ -64,7 +71,7 @@ sub sha ($self) {
 sub _info ($self) {
     unless ($self->{_info}) {
         my ($line) = $self->{git}
-          ->_git("log", "-n1", '--pretty=%H %ct',
+          ->_git_or_die("log", "-n1", '--pretty=%H %ct',
                  $self->{name});
         $line or die "Cannot load info for $self->{name}";
         chomp $line;

@@ -69,7 +69,13 @@ sub _do_one ($self, $last) {
     my $invoker = $self->{invoker};
     my $seen = $self->{seen};
     
-    $git->fetch($cfg->gitfetchopts);
+    unless ($git->fetch($cfg->gitfetchopts)) {
+        print "Failed to fetch\n";
+        unless ($last) {
+            print "  Waiting 5 minutes to try again\n";
+            sleep 300;
+        }
+    }
     my @branches = $git->branches;
     my ($branch, $config) = $matcher->match(\@branches);
     if ($branch) {
