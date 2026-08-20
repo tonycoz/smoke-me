@@ -56,6 +56,9 @@ sub cmd ($self, $argv) {
     elsif ($cmd eq "stop") {
         return $self->cmd_stop($argv);
     }
+    elsif ($cmd eq "stopnow") {
+        return $self->cmd_stopnow($argv);
+    }
     elsif ($cmd eq "help") {
         $self->cmd_help($argv);
     }
@@ -67,8 +70,11 @@ sub cmd ($self, $argv) {
 sub _wait_stop_or_delay($self, $delay) {
     my $cfg = $self->{cfg};
     my $stop_filename = $cfg->stop_filename;
+    my $stopnow_filename = $cfg->stopnow_filename;
     my $end = time() + $delay;
-    while (time() < $end && !-e $stop_filename) {
+    while (time() < $end
+           && !-e $stop_filename
+           && !-e $stopnow_filename) {
         sleep(10);
     }
 }
@@ -116,13 +122,18 @@ sub _do_one ($self, $last) {
 
 sub cmd_run ($self, $argv) {
     my $total_count = 0; # forever
-    my $cfg = $self->{cfg};
     GetOptionsFromArray(
         $argv,
         "c|count=i" => \$total_count);
     @$argv
         and die "No use for extra @$argv arguments";
-    my $done_count = 0;
+
+    my $cfg = $self->{cfg};
+    my $smoke_lockfile = $cfg->smoke_lockfile;
+
+    -f $smoke_lockfile
+        and die "smoke lock file '$smoke_lockfile' exists\n";
+
     my $stop_filename = $cfg->stop_filename;
     if (-e $stop_filename) {
         print "Removing old stop file\n";
@@ -130,6 +141,15 @@ sub cmd_run ($self, $argv) {
             or die "Cannot remove $stop_filename: $!\n";
     }
     print "Will stop if I see $stop_filename\n";
+
+    my $stopnow_filename = $cfg->stopnow_filename;
+    if (-e $stopnow_filename) {
+        print "Removing old stopnow file\n";
+        unlink $stopnow_filename
+            or die "Cannot remove $stopnow_filename: $!\n";
+    }
+    print "Will stop quickly if I see $stopnow_filename\n";
+
     my $pid_filename = $cfg->pid_filename;
     sysopen my $pid_fh, $pid_filename, O_CREAT | O_RDWR
         or die "Cannot create $pid_filename: $!";
@@ -140,23 +160,21 @@ sub cmd_run ($self, $argv) {
         or die "Cannot truncate $pid_filename: $!\n";
     print $pid_fh "$$\n";
 
+    my $done_count = 0;
     my $last = false;
     do {
         $last = $total_count != 0 && ++$done_count >= $total_count;
         $self->_do_one($last);
-    } until ($last || -e $stop_filename);
+    } until ($last || -e $stop_filename || -e $stopnow_filename);
     if (!$last) {
         print "Stopped by request\n";
     }
     0;
 }
 
-sub cmd_stop($self, $argv) {
+sub _do_stop($self, $stop_filename) {
     my $cfg = $self->{cfg};
-    @$argv
-        and die "No use for extra @$argv arguments";
     my $pid_filename = $cfg->pid_filename;
-    my $stop_filename = $cfg->stop_filename;
     -f $pid_filename
         or die "No pid file $pid_filename found, not running\n";
     -e $stop_filename
@@ -170,7 +188,24 @@ When: $when
 EOS
     close $fh
         or die "Cannot close $stop_filename: $!";
+}
+
+sub cmd_stop($self, $argv) {
+    my $cfg = $self->{cfg};
+    @$argv
+        and die "No use for extra @$argv arguments";
+    my $stop_filename = $cfg->stop_filename;
+    $self->_do_stop($stop_filename);
     print "Stop requested\n";
+}
+
+sub cmd_stopnow($self, $argv) {
+    my $cfg = $self->{cfg};
+    @$argv
+        and die "No use for extra @$argv arguments";
+    my $stopnow_filename = $cfg->stopnow_filename;
+    $self->_do_stop($stopnow_filename);
+    print "Stop now requested\n";
 }
 
 sub cmd_help ($self, $argv) {
@@ -187,6 +222,12 @@ EOS
         print <<~EOS;
             perl $0 [globaloptions] stop
                 Stop after the next job.
+            EOS
+    }
+    elsif ($cmd eq "stopnow") {
+        print <<~EOS;
+            perl $0 [globaloptions] stopnow
+                Stop, interrupting the current job.
             EOS
     }
     elsif ($cmd eq "help") {
@@ -209,6 +250,7 @@ Usage:
    -v - verbosity, -vv more verbose, -vvvvvv very verbose
   $0 run       - run smokes
   $0 stop      - stop after the next job (or interjob wait)
+  $0 stopnow   - stop, interrupting the current job (up to 10 second delay)
   $0 help      - display this text
   $0 help cmd  - help for cmd
 EOS

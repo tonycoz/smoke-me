@@ -16,8 +16,6 @@ sub new ($class, $cfg_file) {
     -d $smoke && -f "$smoke/tssmokeperl.pl"
         or die "$cfg_file: smoke '$smoke' not a Test::Smoke install\n";
     my $smoke_lockfile = "$smoke/smokecurrent.lck";
-    -f $smoke_lockfile
-        and die "$cfg_file: smoke directory '$smoke' has lock file\n";
     my $seen_file = $cfg->get("seen") // "$base/seen.txt";
     -f $seen_file
         or die <<~ERROR;
@@ -127,6 +125,8 @@ sub new ($class, $cfg_file) {
 
     my $stop_filename = $cfg->get("stopfile") // "$base/smoke-me.stop";
 
+    my $stopnow_filename = $cfg->get("stopnowfile") // "$base/smoke-me.stopnow";
+
     bless
     {
         base => $base,
@@ -140,6 +140,7 @@ sub new ($class, $cfg_file) {
         smoke_lockfile => $smoke_lockfile,
         pid_filename => $pid_filename,
         stop_filename => $stop_filename,
+        stopnow_filename => $stopnow_filename,
     }, $class;
 }
 
@@ -184,6 +185,10 @@ sub pid_filename($self) {
 
 sub stop_filename($self) {
     $self->{stop_filename};
+}
+
+sub stopnow_filename($self) {
+    $self->{stopnow_filename};
 }
 
 package MyCfg;
